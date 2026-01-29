@@ -1,6 +1,14 @@
 "use server";
 
-export async function generateTryOn(clientImage: string, productImage: string) {
+
+export interface TryOnResult {
+    success: boolean;
+    image?: string;
+    message?: string;
+    error?: string;
+}
+
+export async function generateTryOn(clientImage: string, productImage: string): Promise<TryOnResult> {
     // Simulator delay
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
@@ -11,6 +19,7 @@ export async function generateTryOn(clientImage: string, productImage: string) {
     return {
         success: true,
         image: clientImage, // Return original image for demo purposes since we don't have a real model connected yet
-        message: "Virtual Try-On generated successfully (Demo Mode)"
+        message: "Virtual Try-On generated successfully (Demo Mode)",
+        error: undefined
     };
 }
