@@ -610,7 +610,7 @@ export function ChatInterface({ fullPage = false, hideHeader = false }: { fullPa
                             channels: {
                                 instagram: {
                                     copy: actualCampaign?.channels?.instagram?.copy || '',
-                                    imagePrompt: actualCampaign?.channels?.instagram?.imagePrompt || ''
+                                    image_prompt: actualCampaign?.channels?.instagram?.image_prompt || actualCampaign?.channels?.instagram?.imagePrompt || ''
                                 },
                                 whatsapp: {
                                     script: actualCampaign?.channels?.whatsapp?.script || '',
@@ -619,7 +619,9 @@ export function ChatInterface({ fullPage = false, hideHeader = false }: { fullPa
                                 physical: {
                                     headline: actualCampaign?.channels?.physical?.headline || '',
                                     subheadline: actualCampaign?.channels?.physical?.subheadline || '',
-                                    offer: actualCampaign?.channels?.physical?.offer || ''
+                                    offer: actualCampaign?.channels?.physical?.offer || '',
+                                    layout: actualCampaign?.channels?.physical?.layout || '',
+                                    image_prompt: actualCampaign?.channels?.physical?.image_prompt || actualCampaign?.channels?.physical?.imagePrompt || ''
                                 }
                             }
                         };

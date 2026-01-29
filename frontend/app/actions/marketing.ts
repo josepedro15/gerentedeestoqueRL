@@ -34,6 +34,7 @@ export interface SavedCampaign {
     physical_subheadline?: string;
     physical_offer?: string;
     analise_dados?: any;
+    campaign_data?: CampaignStrategy; // New JSONB column
     status?: string;
 }
 
@@ -68,6 +69,9 @@ export async function getMarketingProducts(filters: MarketingFilters = {}): Prom
     let query = supabase
         .from('dados_estoque')
         .select('*');
+
+    const { count } = await supabase.from('dados_estoque').select('*', { count: 'exact', head: true });
+    console.log("DEBUG: Total items in dados_estoque:", count);
 
     if (filters.search) {
         query = query.ilike('produto_descricao', `%${filters.search}%`);
@@ -116,8 +120,7 @@ export async function getMarketingProducts(filters: MarketingFilters = {}): Prom
         return [];
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    return (data || []).map((item: any) => ({
+    const mappedProducts = (data || []).map((item: any) => ({
         id: item.id_produto,
         name: item.produto_descricao,
         stock: Number(item.estoque_atual || 0),
@@ -129,18 +132,8 @@ export async function getMarketingProducts(filters: MarketingFilters = {}): Prom
         status: item.status_ruptura,
         supplier: item.fornecedor
     }));
-    return (data || []).map((item: any) => ({
-        id: item.id_produto,
-        name: item.produto_descricao,
-        stock: Number(item.estoque_atual || 0),
-        price: Number(item.preco || 0),
-        cost: Number(item.custo || 0),
-        coverage: Number(item.dias_de_cobertura || 0),
-        abc: item.classe_abc || 'C',
-        category: item.categoria || 'Geral',
-        status: item.status_ruptura,
-        supplier: item.fornecedor
-    }));
+
+    return mappedProducts;
 }
 
 export async function getBestCampaignCandidates(strategy: 'clearance' | 'attraction'): Promise<ProductCandidate[]> {
@@ -248,13 +241,29 @@ export interface CampaignStrategy {
     dissemination_strategy: {
         channels: string[]; // e.g. ["Instagram Ads", "WhatsApp Blast", "Radio"]
         tactics: string[]; // e.g. ["Carrossel de Ofertas", "Lista de Transmissão VIP"]
-        budget_allocation?: string; // e.g. "70% Meta Ads, 30% Print"
-        timeline: string; // e.g. "Day 1: Teaser, Day 2: Launch"
+        budget_allocation?: {
+            total_suggestion: number;
+            allocations: { channel: string; percentage: number; rationale: string }[];
+        };
+        timeline: { day: string; title: string; description: string }[];
+        estimated_reach?: string; // e.g. "10k - 15k people"
     };
     channels: {
-        whatsapp: { script: string; trigger: string };
-        instagram: { copy: string; image_prompt: string };
-        physical: { headline: string; subheadline: string; offer: string; layout: string; image_prompt: string };
+        whatsapp: { script: string; trigger: string; script_options?: string[] };
+        instagram: {
+            copy: string;
+            copy_options?: string[];
+            image_prompt: string;
+            image_options?: { title: string; prompt: string }[];
+        };
+        physical: {
+            headline: string;
+            subheadline: string;
+            offer: string;
+            layout: string;
+            image_prompt: string;
+            image_options?: { title: string; prompt: string }[];
+        };
     };
 }
 
@@ -336,21 +345,41 @@ export async function generateCampaignWithGemini(
                   "dissemination_strategy": {
                       "channels": ["String", "String"],
                       "tactics": ["String", "String"],
-                      "budget_allocation": "String (Suggestion)",
-                      "timeline": "String"
+                      "budget_allocation": {
+                          "total_suggestion": Number,
+                          "allocations": [
+                              { "channel": "String (e.g. 'Meta Ads', 'Impressão')", "percentage": Number, "rationale": "String" }
+                          ]
+                      },
+                      "timeline": [
+                          { "day": "String (e.g. 'Dia 1')", "title": "String (Action)", "description": "String (Details)" }
+                      ],
+                      "estimated_reach": "String (e.g. '10.000 - 15.000 pessoas')"
                   },
                   "channels": {
                       "whatsapp": { 
-                          "script": "String (Portuguese). MUST use WhatsApp Markdown (*bold* for emphasis, _italics_, emojis). NO HTML.", 
+                          "script": "String (Portuguese). Best option.", 
+                          "script_options": ["String (Option 1)", "String (Option 2)", "String (Option 3)"],
                           "trigger": "String" 
                       },
                       "instagram": { 
-                          "copy": "String (Portuguese, detailed caption with hashtags)", 
-                          "image_prompt": "String (ENGLISH, highly detailed for Flux/SD generation. Describe lighting, camera angle, elements)" 
+                          "copy": "String (Portuguese). Best option.",
+                          "copy_options": ["String (Option 1)", "String (Option 2)", "String (Option 3)"],
+                          "image_prompt": "String (ENGLISH)",
+                          "image_options": [
+                              { "title": "Concept 1 Title", "prompt": "String (ENGLISH) - Detail 1" },
+                              { "title": "Concept 2 Title", "prompt": "String (ENGLISH) - Detail 2" },
+                              { "title": "Concept 3 Title", "prompt": "String (ENGLISH) - Detail 3" }
+                          ]
                       },
                       "physical": { 
                           "headline": "String", "subheadline": "String", "offer": "String", "layout": "String",
-                          "image_prompt": "String (ENGLISH, highly detailed for Flux/SD generation for a printed poster)"
+                          "image_prompt": "String (ENGLISH)",
+                          "image_options": [
+                               { "title": "Concept 1 Title", "prompt": "String (ENGLISH)" },
+                               { "title": "Concept 2 Title", "prompt": "String (ENGLISH)" },
+                               { "title": "Concept 3 Title", "prompt": "String (ENGLISH)" }
+                          ]
                       }
                   }
               }
@@ -382,8 +411,12 @@ export async function generateCampaignWithGemini(
 // Salvar campanha no banco
 export async function saveCampaign(
     userId: string,
-    campaignData: CampaignStrategy,
-    products: ProductCandidate[]
+    campaignData: Partial<CampaignStrategy>,
+    products: ProductCandidate[],
+    context?: string,
+    model?: string,
+    instagramImageUrl?: string,
+    physicalImageUrl?: string
 ): Promise<{ success: boolean; id?: string; error?: string }> {
 
     try {
@@ -412,15 +445,18 @@ export async function saveCampaign(
                 preco: p.price,
                 estoque: p.stock
             })),
-            instagram_copy: campaignData.channels.instagram.copy,
-            instagram_image_prompt: campaignData.channels.instagram.image_prompt,
-            whatsapp_script: campaignData.channels.whatsapp.script,
-            whatsapp_trigger: campaignData.channels.whatsapp.trigger,
-            physical_headline: campaignData.channels.physical.headline,
-            physical_subheadline: campaignData.channels.physical.subheadline,
-            physical_offer: campaignData.channels.physical.offer,
+            instagram_copy: campaignData.channels?.instagram?.copy,
+            instagram_image_prompt: campaignData.channels?.instagram?.image_prompt,
+            instagram_image_url: instagramImageUrl,
+            whatsapp_script: campaignData.channels?.whatsapp?.script,
+            whatsapp_trigger: campaignData.channels?.whatsapp?.trigger,
+            physical_headline: campaignData.channels?.physical?.headline,
+            physical_subheadline: campaignData.channels?.physical?.subheadline,
+            physical_offer: campaignData.channels?.physical?.offer,
+            physical_image_url: physicalImageUrl,
             status: 'active',
-            analise_dados: campaignData.report // Saving the full report JSON
+            analise_dados: campaignData.report, // Keep backward compatibility for now
+            campaign_data: campaignData // Save full strategy JSON
         };
 
         const { data, error } = await supabase
@@ -432,9 +468,9 @@ export async function saveCampaign(
         if (error) throw error;
 
         return { success: true, id: data.id };
-    } catch (e: unknown) {
-        const errorMessage = e instanceof Error ? e.message : String(e);
+    } catch (e: any) {
         logger.error("Error saving campaign:", e);
+        const errorMessage = typeof e === 'object' && e !== null ? JSON.stringify(e) : String(e);
         return { success: false, error: errorMessage };
     }
 }
@@ -460,6 +496,29 @@ export async function getAllCampaigns(limit: number = 50): Promise<SavedCampaign
     }
 
     return data as SavedCampaign[];
+}
+
+export async function getPublicCampaign(id: string): Promise<SavedCampaign | null> {
+    const cookieStore = await cookies();
+    const supabase = createServerClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+        cookies: {
+            getAll() { return cookieStore.getAll() },
+            setAll(cookiesToSet) { try { cookiesToSet.forEach(({ name, value, options }) => cookieStore.set(name, value, options)) } catch { } }
+        }
+    });
+
+    const { data, error } = await supabase
+        .from('campanhas_marketing')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+    if (error) {
+        console.error("Error fetching public campaign:", error);
+        return null;
+    }
+
+    return data as SavedCampaign;
 }
 
 export async function deleteCampaign(id: string): Promise<boolean> {

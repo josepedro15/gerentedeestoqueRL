@@ -19,7 +19,9 @@ import {
     BookOpen,
     Truck,
     ShoppingCart,
-    Sparkles
+    Sparkles,
+    Shirt,
+    Clock
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { signout } from "@/app/login/actions";
@@ -32,9 +34,11 @@ const menuItems = [
     { icon: Truck, label: "Fornecedores", href: "/suppliers", activeColor: "text-blue-400" },
     { icon: ShoppingCart, label: "Pedidos", href: "/orders", activeColor: "text-amber-400" },
     { icon: BookOpen, label: "Lógica", href: "/logic", activeColor: "text-purple-400" },
+    { icon: Clock, label: "Histórico de Pedidos", href: "/orders/history", activeColor: "text-orange-400" },
     { icon: MessageCircle, label: "Bate-papo", href: "/chat", activeColor: "text-indigo-400" },
-    { icon: Megaphone, label: "Campanhas", href: "/marketing", activeColor: "text-pink-400" },
+    { icon: Megaphone, label: "Histórico de Campanhas", href: "/marketing", activeColor: "text-pink-400" },
     { icon: Sparkles, label: "Nova Campanha", href: "/marketing/new", activeColor: "text-purple-400" },
+
     { icon: Rocket, label: "Roadmap", href: "/roadmap", activeColor: "text-blue-400" },
     { icon: BookOpen, label: "Ajuda", href: "/help", activeColor: "text-cyan-400" },
 ];
@@ -89,7 +93,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
             <BranchSelector />
 
             {/* Navigation */}
-            <nav className="flex-1 space-y-2">
+            <nav className="flex-1 space-y-2 overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-muted scrollbar-track-transparent">
                 {menuItems.map((item) => {
                     const isActive = pathname === item.href;
 
@@ -114,7 +118,7 @@ function SidebarContent({ onClose }: { onClose?: () => void }) {
                             )}
 
                             <item.icon
-                                size={20}
+                                size={24}
                                 className={cn(
                                     "relative z-10 transition-colors",
                                     isActive ? (item.activeColor || "text-primary") : "group-hover:text-foreground"

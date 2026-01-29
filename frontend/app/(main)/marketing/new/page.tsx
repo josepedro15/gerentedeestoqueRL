@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo } from "react";
 import {
     Search, Filter, ShoppingCart, Sparkles, AlertTriangle,
-    Check, X, Megaphone, Loader2, BarChart2, TrendingUp
+    Check, X, Megaphone, Loader2, BarChart2, TrendingUp, Wand2, ShoppingBasket, Bot
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,13 @@ import { CampaignEditor } from "@/components/marketing/CampaignEditor";
 import { formatCurrency } from "@/lib/formatters";
 import { cn } from "@/lib/utils";
 import { Modal } from "@/components/ui/modal";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts";
 import { getUpcomingSeasonality, SeasonalityEvent } from "@/lib/seasonality";
@@ -52,6 +59,9 @@ export default function MarketingPage() {
     const [categories, setCategories] = useState<string[]>([]);
     const [selectedCategory, setSelectedCategory] = useState<string>("ALL");
     const [minStock, setMinStock] = useState<string>("");
+
+    // Wizard State
+    const [wizardOpen, setWizardOpen] = useState(false);
 
     // Pagination
     const [offset, setOffset] = useState(0);
@@ -235,31 +245,56 @@ export default function MarketingPage() {
     };
 
     // Action: Send / Save
-    const handleSend = async (finalStrategy: CampaignStrategy) => {
+    const handleSend = async (finalStrategy: CampaignStrategy, visualUrl?: string) => {
         setSending(true);
         try {
             // 1. Save to DB
+            // Determine if visualUrl corresponds to Instagram or Physical to save correctly
+            // For now, we'll try to guess based on strategy, or just save generic if needed.
+            // The saveCampaign signature is: saveCampaign(userId, campaign, products, context, model, instaUrl, physicalUrl)
+
+            // Heuristic: If we have a visualUrl, check if it matches what we might have stored or just save it as instagram (most common)
+            const isInsta = visualUrl && finalStrategy.channels.instagram.image_options?.some(opt => opt.prompt) || true; // Fallback
+
             const saveResult = await saveCampaign(
                 "user-id-placeholder", // We need to get this from session in a real component or let the server action handle it via cookies
                 finalStrategy,
-                cart
+                cart,
+                undefined,
+                undefined,
+                visualUrl // Assuming primary visual is Instagram for now
             );
 
             if (!saveResult.success) {
-                // Allow to proceed even if save fails? verify
                 console.error("Failed to save history", saveResult.error);
+                alert(`Erro ao salvar histórico: ${saveResult.error}`);
+                return; // Stop execution
             }
 
             // 2. Send to WhatsApp
+            const shareLink = `${window.location.origin}/share/${saveResult.id}`;
+
             const msg = `🚀 *NOVA CAMPANHA GERADA*\n\n` +
                 `*Título:* ${finalStrategy.report.title}\n` +
                 `*Gancho:* ${finalStrategy.report.hook}\n\n` +
-                `*--- WhatsApp Script ---*\n${finalStrategy.channels.whatsapp.script}\n\n` +
-                `*--- Instagram ---*\n${finalStrategy.channels.instagram.copy}`;
+                `📊 *Ver Relatório Completo:* ${shareLink}\n\n` +
+                `*--- Resumo Instagram ---*\n${finalStrategy.channels.instagram.copy.slice(0, 100)}...`;
 
-            await sendToMarketingGroup({ message: msg });
+            const sendResult = await sendToMarketingGroup({
+                message: msg,
+                mediaUrl: visualUrl,
+                mediaType: 'image'
+            });
 
-            alert("Campanha enviada com sucesso para o grupo de Marketing!");
+            if (sendResult.success) {
+                if (sendResult.mock) {
+                    alert("Campanha salva! (WhatsApp simulado - Configure o token para envio real)");
+                } else {
+                    alert("Campanha enviada com sucesso para o grupo de Marketing!");
+                }
+            } else {
+                alert(`Campanha salva, mas erro ao enviar WhatsApp: ${sendResult.error}`);
+            }
             // Reset or Redirect?
             // window.location.href = '/marketing';
 
@@ -326,6 +361,14 @@ export default function MarketingPage() {
                                 onKeyDown={e => e.key === 'Enter' && loadProducts()}
                             />
                         </div>
+                        <Button
+                            variant="default"
+                            className="bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white shadow-md border-0 gap-2 px-4"
+                            onClick={() => setWizardOpen(true)}
+                        >
+                            <Bot size={16} />
+                            <span className="hidden sm:inline">Assistente</span>
+                        </Button>
                         <Button variant="outline" size="icon" onClick={() => setFiltersOpen(true)}>
                             <Filter size={16} />
                         </Button>
@@ -482,91 +525,12 @@ export default function MarketingPage() {
                     {/* Cart List */}
                     <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin mb-4">
                         {cart.length === 0 ? (
-                            <div className="flex flex-col gap-4 p-4">
-                                <div className="text-center py-4 bg-muted/40 rounded-lg border-2 border-dashed">
-                                    <p className="font-semibold text-muted-foreground">O que vamos vender hoje?</p>
-                                    <p className="text-xs text-muted-foreground mt-1">Escolha um objetivo abaixo:</p>
-                                </div>
-
-                                {/* GOAL: CLEARANCE */}
-                                <Card
-                                    className="cursor-pointer hover:border-red-400 hover:bg-red-50/10 transition-all group"
-                                    onClick={async () => {
-                                        setLoading(true);
-                                        try {
-                                            const candidates = await getBestCampaignCandidates('clearance');
-
-                                            if (candidates.length === 0) {
-                                                alert("Não encontramos produtos de Curva C com estoque para sugerir.");
-                                            } else {
-                                                setCart(candidates);
-                                                // MERGE into main list so they are visible/selectable
-                                                setProducts(prev => {
-                                                    const existingIds = new Set(prev.map(p => p.id));
-                                                    const newProducts = candidates.filter(c => !existingIds.has(c.id));
-                                                    return [...newProducts, ...prev]; // Prepend so they are at top
-                                                });
-                                            }
-                                        } catch (e) {
-                                            console.error(e);
-                                            alert("Erro ao buscar sugestões.");
-                                        } finally {
-                                            setLoading(false);
-                                        }
-                                    }}
-                                >
-                                    <CardContent className="p-4 flex items-start gap-3">
-                                        <div className="p-2 bg-red-100 text-red-600 rounded-lg group-hover:bg-red-600 group-hover:text-white transition-colors">
-                                            <TrendingUp size={20} className="rotate-180" />
-                                        </div>
-                                        <div>
-                                            <h3 className="font-bold text-sm">Queimar Estoque</h3>
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                                Selecionar itens parados (Curva C) com <strong>maior volume</strong>.
-                                            </p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
-
-                                {/* GOAL: ATTRACTION */}
-                                <Card
-                                    className="cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/10 transition-all group"
-                                    onClick={async () => {
-                                        setLoading(true);
-                                        try {
-                                            const candidates = await getBestCampaignCandidates('attraction');
-
-                                            if (candidates.length === 0) {
-                                                alert("Não encontramos produtos de Curva A para sugerir.");
-                                            } else {
-                                                setCart(candidates);
-                                                // MERGE into main list
-                                                setProducts(prev => {
-                                                    const existingIds = new Set(prev.map(p => p.id));
-                                                    const newProducts = candidates.filter(c => !existingIds.has(c.id));
-                                                    return [...newProducts, ...prev];
-                                                });
-                                            }
-                                        } catch (e) {
-                                            console.error(e);
-                                            alert("Erro ao buscar sugestões.");
-                                        } finally {
-                                            setLoading(false);
-                                        }
-                                    }}
-                                >
-                                    <CardContent className="p-4 flex items-start gap-3">
-                                        <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg group-hover:bg-emerald-600 group-hover:text-white transition-colors">
-                                            <Megaphone size={20} />
-                                        </div>
-                                        <div>
-                                            <h3 className="font-bold text-sm">Atrair Clientes</h3>
-                                            <p className="text-xs text-muted-foreground mt-1">
-                                                Selecionar campeões (Curva A) com <strong>boa disponibilidade</strong>.
-                                            </p>
-                                        </div>
-                                    </CardContent>
-                                </Card>
+                            <div className="flex flex-col gap-4 p-8 text-center items-center justify-center h-[300px] text-muted-foreground border-2 border-dashed rounded-xl bg-muted/5">
+                                <ShoppingBasket size={48} className="opacity-20 mb-2" />
+                                <p className="font-medium">Seu mix está vazio</p>
+                                <p className="text-sm max-w-[200px]">
+                                    Selecione produtos da lista ao lado ou use a <span className="text-indigo-600 font-bold cursor-pointer hover:underline" onClick={() => setWizardOpen(true)}>Assistente Estratégico</span> para sugestões automáticas.
+                                </p>
                             </div>
                         ) : (
                             cart.map(p => (
@@ -696,6 +660,98 @@ export default function MarketingPage() {
                     </div>
                 </div>
             </Modal>
+
+            {/* Magic Wizard Dialog */}
+            <Dialog open={wizardOpen} onOpenChange={setWizardOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <Bot className="w-5 h-5 text-purple-600" />
+                            Assistente Estratégico IA
+                        </DialogTitle>
+                        <DialogDescription>
+                            Escolha um objetivo para que nossa IA selecione os melhores produtos para você.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <Card
+                            className="cursor-pointer hover:border-red-400 hover:bg-red-50/10 transition-all group border-muted"
+                            onClick={async () => {
+                                setWizardOpen(false);
+                                setLoading(true);
+                                try {
+                                    const candidates = await getBestCampaignCandidates('clearance');
+                                    if (candidates.length === 0) {
+                                        alert("Não encontramos produtos de Curva C com estoque para sugerir.");
+                                    } else {
+                                        setCart(candidates);
+                                        // Merge to visible list
+                                        setProducts(prev => {
+                                            const existingIds = new Set(prev.map(p => p.id));
+                                            const newProducts = candidates.filter(c => !existingIds.has(c.id));
+                                            return [...newProducts, ...prev];
+                                        });
+                                    }
+                                } catch (e) {
+                                    console.error(e);
+                                } finally {
+                                    setLoading(false);
+                                }
+                            }}
+                        >
+                            <CardContent className="p-4 flex items-center gap-4">
+                                <div className="p-3 bg-red-100 text-red-600 rounded-full group-hover:scale-110 transition-transform">
+                                    <TrendingUp size={24} className="rotate-180" />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-base">Queima de Estoque</h3>
+                                    <p className="text-sm text-muted-foreground">Focar em produtos parados (Curva C) para liberar caixa.</p>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                        <Card
+                            className="cursor-pointer hover:border-emerald-400 hover:bg-emerald-50/10 transition-all group border-muted"
+                            onClick={async () => {
+                                setWizardOpen(false);
+                                setLoading(true);
+                                try {
+                                    const candidates = await getBestCampaignCandidates('attraction');
+                                    if (candidates.length === 0) {
+                                        alert("Não encontramos produtos de Curva A para sugerir.");
+                                    } else {
+                                        setCart(candidates);
+                                        // Merge
+                                        setProducts(prev => {
+                                            const existingIds = new Set(prev.map(p => p.id));
+                                            const newProducts = candidates.filter(c => !existingIds.has(c.id));
+                                            return [...newProducts, ...prev];
+                                        });
+                                    }
+                                } catch (e) {
+                                    console.error(e);
+                                } finally {
+                                    setLoading(false);
+                                }
+                            }}
+                        >
+                            <CardContent className="p-4 flex items-center gap-4">
+                                <div className="p-3 bg-emerald-100 text-emerald-600 rounded-full group-hover:scale-110 transition-transform">
+                                    <Megaphone size={24} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-base">Atrair Clientes</h3>
+                                    <p className="text-sm text-muted-foreground">Usar produtos campeões (Curva A) para gerar fluxo na loja.</p>
+                                </div>
+                            </CardContent>
+                        </Card>
+
+                    </div>
+                    <div className="flex justify-end">
+                        <Button variant="ghost" onClick={() => setWizardOpen(false)}>Cancelar</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
 
         </div>
     );

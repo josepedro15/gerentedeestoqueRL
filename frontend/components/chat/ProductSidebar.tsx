@@ -3,9 +3,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { Search, Send, Package, X, Loader2, Flame, Check, Sparkles, Filter, ChevronDown, ChevronUp, ShoppingCart } from "lucide-react";
 import { getStockData } from "@/app/actions/inventory";
-import { generateCampaign } from "@/app/actions/marketing";
+
 import { cn } from "@/lib/utils";
-import { MixValidationPanel, validateAbcMix } from "./MixValidationPanel";
 import { normalizeStatus, parseNumber } from "@/lib/formatters";
 import {
     STATUS_COLORS_COMPACT,
@@ -40,13 +39,8 @@ export function ProductSidebar({ isOpen, onClose }: ProductSidebarProps) {
     const [error, setError] = useState<string | null>(null);
     const [search, setSearch] = useState("");
 
-    // Nova: aba ativa
-    const [activeTab, setActiveTab] = useState<'products' | 'campaigns'>('products');
-
     // Nova: seleção múltipla para campanhas
     const [selectedIds, setSelectedIds] = useState<string[]>([]);
-    const [generating, setGenerating] = useState(false);
-    const [showMixPanel, setShowMixPanel] = useState(false);
 
     // Filtros
     const [showFilters, setShowFilters] = useState(false);
@@ -248,45 +242,7 @@ export function ProductSidebar({ isOpen, onClose }: ProductSidebarProps) {
         }
     };
 
-    // Validar mix ABC dos produtos selecionados
-    const mixValidation = useMemo(() => {
-        const selected = products.filter(p => selectedIds.includes(p.id));
-        return validateAbcMix(selected);
-    }, [selectedIds, products]);
 
-    // Gerar campanha (com validação)
-    const handleGenerateCampaign = async () => {
-        if (selectedIds.length === 0 || generating) return;
-
-        // Verificar se mix está bloqueado
-        if (!mixValidation.canGenerate) {
-            setShowMixPanel(true);
-            return;
-        }
-        // Fechar painel se estava aberto
-        setShowMixPanel(false);
-
-        setGenerating(true);
-        try {
-            const result = await generateCampaign(selectedIds);
-
-            // Enviar resultado para o chat
-            window.dispatchEvent(new CustomEvent('chat:campaign-generated', {
-                detail: {
-                    type: 'campaign',
-                    campaign: result,
-                    products: products.filter(p => selectedIds.includes(p.id)),
-                }
-            }));
-
-            setSelectedIds([]);
-            if (window.innerWidth < 1024) onClose();
-        } catch (err) {
-            console.error("Erro ao gerar campanha:", err);
-        } finally {
-            setGenerating(false);
-        }
-    };
 
 
 
@@ -325,51 +281,17 @@ export function ProductSidebar({ isOpen, onClose }: ProductSidebarProps) {
             {/* Sidebar */}
             <aside className="fixed lg:relative left-0 top-0 h-full w-[85vw] max-w-80 sm:w-80 bg-card border-r border-border z-50 flex flex-col">
                 {/* Tabs */}
-                <div className="flex border-b border-border">
-                    <button
-                        onClick={() => { setActiveTab('products'); setSelectedIds([]); }}
-                        className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors",
-                            activeTab === 'products'
-                                ? "text-foreground bg-accent border-b-2 border-blue-500"
-                                : "text-muted-foreground hover:text-foreground"
-                        )}
-                    >
-                        <Package size={16} />
-                        Produtos
-                    </button>
-                    <button
-                        onClick={() => setActiveTab('campaigns')}
-                        className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors",
-                            activeTab === 'campaigns'
-                                ? "text-foreground bg-accent border-b-2 border-pink-500"
-                                : "text-muted-foreground hover:text-foreground"
-                        )}
-                    >
-                        <Flame size={16} />
-                        Campanhas
-                    </button>
-                    <button
-                        onClick={onClose}
-                        className="p-3 text-muted-foreground hover:text-foreground lg:hidden"
-                    >
-                        <X size={18} />
-                    </button>
-                </div>
-
                 {/* Header da aba */}
                 <div className="p-4 border-b border-border relative z-20 bg-background">
-                    {activeTab === 'products' ? (
-                        <div className="text-xs text-muted-foreground mb-3">
-                            Selecione um produto para análise individual
-                        </div>
-                    ) : (
-                        <div className="text-xs text-muted-foreground mb-3">
-                            Selecione até 10 produtos para gerar campanha
-                            <span className="ml-1 text-pink-400">({selectedIds.length}/10)</span>
-                        </div>
-                    )}
+                    <div className="text-xs text-muted-foreground mb-3 flex justify-between items-center">
+                        <span>Selecione produtos para análise ou compra</span>
+                        <button
+                            onClick={onClose}
+                            className="text-muted-foreground hover:text-foreground lg:hidden"
+                        >
+                            <X size={16} />
+                        </button>
+                    </div>
 
                     {/* Search + Filter Toggle */}
                     <div className="flex gap-2">
@@ -541,10 +463,7 @@ export function ProductSidebar({ isOpen, onClose }: ProductSidebarProps) {
                         </div>
                     ) : filteredProducts.length === 0 ? (
                         <div className="p-4 text-center text-muted-foreground text-sm">
-                            {activeTab === 'campaigns'
-                                ? "Nenhum produto com excesso encontrado"
-                                : "Nenhum produto encontrado"
-                            }
+                            "Nenhum produto encontrado"
                         </div>
                     ) : (
                         <div className="divide-y divide-border">
@@ -558,9 +477,7 @@ export function ProductSidebar({ isOpen, onClose }: ProductSidebarProps) {
                                         className={cn(
                                             "p-3 transition-colors cursor-pointer hover:bg-accent/50 border-l-4",
                                             isSelected
-                                                ? activeTab === 'campaigns'
-                                                    ? "bg-pink-500/10 border-pink-500"
-                                                    : "bg-blue-500/10 border-blue-500"
+                                                ? "bg-blue-500/10 border-blue-500"
                                                 : "border-transparent"
                                         )}
                                     >
@@ -570,9 +487,7 @@ export function ProductSidebar({ isOpen, onClose }: ProductSidebarProps) {
                                                 <div className={cn(
                                                     "w-5 h-5 rounded flex items-center justify-center border-2 transition-all duration-150",
                                                     isSelected
-                                                        ? activeTab === 'campaigns'
-                                                            ? "bg-pink-500 border-pink-500"
-                                                            : "bg-blue-500 border-blue-500"
+                                                        ? "bg-blue-500 border-blue-500"
                                                         : "border-gray-400 bg-transparent"
                                                 )}>
                                                     {isSelected && (
@@ -608,11 +523,7 @@ export function ProductSidebar({ isOpen, onClose }: ProductSidebarProps) {
                                                     <span className="text-xs text-muted-foreground">
                                                         {product.estoque.toLocaleString('pt-BR')} un
                                                     </span>
-                                                    {activeTab === 'campaigns' && (
-                                                        <span className="text-xs text-blue-400">
-                                                            {product.cobertura.toFixed(0)}d
-                                                        </span>
-                                                    )}
+
                                                 </div>
                                             </div>
                                         </div>
@@ -623,79 +534,9 @@ export function ProductSidebar({ isOpen, onClose }: ProductSidebarProps) {
                     )}
                 </div>
 
-                {/* Footer: botão gerar campanha */}
-                {activeTab === 'campaigns' && (
-                    <div className="relative p-4 border-t border-border bg-muted/50">
-                        {showMixPanel && (
-                            <MixValidationPanel
-                                validation={mixValidation}
-                                onClose={() => setShowMixPanel(false)}
-                            />
-                        )}
 
-                        {/* Mix Status Indicator */}
-                        {selectedIds.length > 0 && (
-                            <div className="mb-3">
-                                <div className="flex items-center justify-between text-xs mb-1">
-                                    <span className="text-muted-foreground">Mix ABC</span>
-                                    <span className={cn(
-                                        "font-medium",
-                                        mixValidation.status === 'ideal' && "text-green-400",
-                                        mixValidation.status === 'warning' && "text-yellow-400",
-                                        mixValidation.status === 'blocked' && "text-red-400"
-                                    )}>
-                                        {mixValidation.status === 'ideal' && '✓ Ideal'}
-                                        {mixValidation.status === 'warning' && '⚠ Atenção'}
-                                        {mixValidation.status === 'blocked' && '✗ Bloqueado'}
-                                    </span>
-                                </div>
-                                <div className="flex h-2 rounded-full overflow-hidden bg-muted/50">
-                                    {mixValidation.mixPercent.A > 0 && (
-                                        <div className="bg-blue-500" style={{ width: `${mixValidation.mixPercent.A}%` }} />
-                                    )}
-                                    {mixValidation.mixPercent.B > 0 && (
-                                        <div className="bg-purple-500" style={{ width: `${mixValidation.mixPercent.B}%` }} />
-                                    )}
-                                    {mixValidation.mixPercent.C > 0 && (
-                                        <div className="bg-orange-500" style={{ width: `${mixValidation.mixPercent.C}%` }} />
-                                    )}
-                                </div>
-                            </div>
-                        )}
-
-                        <button
-                            onClick={handleGenerateCampaign}
-                            disabled={selectedIds.length === 0 || generating}
-                            className={cn(
-                                "w-full flex items-center justify-center gap-2 py-3 rounded-xl font-bold transition-all",
-                                selectedIds.length > 0
-                                    ? mixValidation.canGenerate
-                                        ? "bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:opacity-90"
-                                        : "bg-gradient-to-r from-red-600 to-red-700 text-white hover:opacity-90"
-                                    : "bg-accent text-muted-foreground cursor-not-allowed"
-                            )}
-                        >
-                            {generating ? (
-                                <>
-                                    <Loader2 size={18} className="animate-spin" />
-                                    Gerando...
-                                </>
-                            ) : !mixValidation.canGenerate && selectedIds.length > 0 ? (
-                                <>
-                                    <Sparkles size={18} />
-                                    Ajustar Mix ({selectedIds.length})
-                                </>
-                            ) : (
-                                <>
-                                    <Sparkles size={18} />
-                                    Gerar Campanha ({selectedIds.length})
-                                </>
-                            )}
-                        </button>
-                    </div>
-                )}
                 {/* Footer: acoes em lote para produtos */}
-                {activeTab === 'products' && selectedIds.length > 0 && (
+                {selectedIds.length > 0 && (
                     <div className="p-4 border-t border-border bg-muted/50 grid grid-cols-2 gap-3">
                         <button
                             onClick={() => handleBatchAction('analyze')}

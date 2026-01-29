@@ -8,14 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Send, ArrowLeft, Copy, Check, MessageCircle, Instagram, Store, CalendarDays } from "lucide-react";
+import { Send, ArrowLeft, Copy, Check, MessageCircle, Instagram, Store, CalendarDays, Printer, TrendingUp, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getUpcomingSeasonality, SeasonalityEvent } from "@/lib/seasonality";
+import { TimelineVisualizer } from "@/components/marketing/TimelineVisualizer";
+import { BudgetOptimizer, BudgetStrategy } from "@/components/marketing/BudgetOptimizer";
 
 interface CampaignEditorProps {
     strategy: CampaignStrategy;
     onBack: () => void;
-    onSend: (finalStrategy: CampaignStrategy) => void;
+    onSend: (finalStrategy: CampaignStrategy, visualUrl?: string) => void;
     isSending: boolean;
 }
 
@@ -35,6 +37,7 @@ export function CampaignEditor({ strategy, onBack, onSend, isSending }: Campaign
     // State for Visuals
     const [generatingVisual, setGeneratingVisual] = useState<'instagram' | 'physical' | null>(null);
     const [visuals, setVisuals] = useState<{ instagram?: string, physical?: string }>({});
+    const [visualCandidates, setVisualCandidates] = useState<{ instagram?: (string | null)[], physical?: (string | null)[] }>({});
 
     // Action: Generate Image
     const handleGenerateImage = async (type: 'instagram' | 'physical') => {
@@ -104,6 +107,104 @@ export function CampaignEditor({ strategy, onBack, onSend, isSending }: Campaign
         });
     };
 
+    const handleExport = () => {
+        const printWindow = window.open('', '_blank');
+        if (!printWindow) return;
+
+        const html = `
+            <html>
+                <head>
+                    <title>Relatório: ${editableStrategy.report.title}</title>
+                    <style>
+                        body { font-family: system-ui, -apple-system, sans-serif; padding: 20px; color: #1a1a1a; max-width: 800px; margin: 0 auto; }
+                        h1 { color: #111; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+                        h2 { color: #333; margin-top: 30px; border-bottom: 1px solid #eee; padding-bottom: 5px; }
+                        .metric { display: inline-block; background: #f4f4f5; padding: 10px 15px; border-radius: 8px; margin-right: 10px; font-size: 14px; }
+                        .metric strong { display: block; font-size: 18px; color: #000; }
+                        table { width: 100%; border-collapse: collapse; margin-top: 15px; font-size: 14px; }
+                        th { text-align: left; border-bottom: 2px solid #ddd; padding: 8px; background: #f9f9f9; }
+                        td { border-bottom: 1px solid #eee; padding: 8px; }
+                        .tactic { font-style: italic; color: #666; }
+                        .channel-box { border: 1px solid #ddd; padding: 15px; border-radius: 8px; margin-top: 15px; background: #fff; }
+                        .channel-header { font-weight: bold; color: #555; margin-bottom: 10px; display: flex; align-items: center; gap: 5px; }
+                        @media print {
+                            body { padding: 0; }
+                            .no-print { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <h1>${editableStrategy.report.title}</h1>
+                    <p style="font-size: 1.1em; color: #555;">${editableStrategy.report.hook}</p>
+                    
+                    <div style="margin: 20px 0;">
+                        <div class="metric">Público-Alvo: <strong>${editableStrategy.report.target_audience}</strong></div>
+                    </div>
+
+                    <h2>🛒 Estratégia de Preços & Produtos</h2>
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Produto</th>
+                                <th style="text-align: right;">Custo</th>
+                                <th style="text-align: right;">Preço Sugerido</th>
+                                <th style="text-align: right;">Margem</th>
+                                <th style="text-align: right;">Desc.</th>
+                                <th>Tática</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${editableStrategy.pricing_strategy?.map(item => `
+                                <tr>
+                                    <td>${item.product_name}</td>
+                                    <td style="text-align: right;">R$ ${item.cost}</td>
+                                    <td style="text-align: right; font-weight: bold;">R$ ${item.suggested_price}</td>
+                                    <td style="text-align: right;">${item.margin_percent}%</td>
+                                    <td style="text-align: right; color: red;">-${item.discount_percent}%</td>
+                                    <td class="tactic">${item.tactic}</td>
+                                </tr>
+                            `).join('') || ''}
+                        </tbody>
+                    </table>
+
+                    <h2>📢 Canais de Divulgação</h2>
+                    
+                    <div class="channel-box">
+                        <div class="channel-header">📱 WhatsApp</div>
+                        <p style="white-space: pre-wrap; font-family: monospace; background: #f0fdf4; padding: 10px; border-radius: 5px;">${editableStrategy.channels.whatsapp.script}</p>
+                        <p style="font-size: 0.8em; color: #666; margin-top:5px;">Gatilho: ${editableStrategy.channels.whatsapp.trigger}</p>
+                    </div>
+
+                    <div class="channel-box">
+                        <div class="channel-header">📸 Instagram</div>
+                        <p style="white-space: pre-wrap;">${editableStrategy.channels.instagram.copy}</p>
+                        <div style="margin-top: 10px; padding: 10px; background: #fdf2f8; border-radius: 5px; font-size: 0.9em;">
+                            <strong>Prompt Imagem:</strong> ${editableStrategy.channels.instagram.image_prompt}
+                        </div>
+                    </div>
+
+                    <div class="channel-box">
+                        <div class="channel-header">🏪 Loja Física (PDV)</div>
+                        <h3 style="margin: 5px 0;">${editableStrategy.channels.physical.headline}</h3>
+                        <p>${editableStrategy.channels.physical.subheadline}</p>
+                        <p style="color: #dc2626; font-weight: bold; font-size: 1.2em;">${editableStrategy.channels.physical.offer}</p>
+                    </div>
+
+                    <div style="margin-top: 40px; text-align: center; color: #999; font-size: 0.8em;">
+                        Gerado por Gerente de Estoque AI • ${new Date().toLocaleDateString()}
+                    </div>
+                    
+                    <script>
+                        setTimeout(() => { window.print(); }, 500);
+                    </script>
+                </body>
+            </html>
+        `;
+
+        printWindow.document.write(html);
+        printWindow.document.close();
+    };
+
     return (
         <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
@@ -120,7 +221,20 @@ export function CampaignEditor({ strategy, onBack, onSend, isSending }: Campaign
                         </div>
                     )}
                     <Button
-                        onClick={() => onSend(editableStrategy)}
+                        variant="outline"
+                        onClick={handleExport}
+                        className="gap-2"
+                        title="Imprimir ou Salvar PDF"
+                    >
+                        <Printer size={16} />
+                        <span className="hidden sm:inline">Relatório</span>
+                    </Button>
+                    <Button
+                        onClick={() => {
+                            // Prioritize Instagram visual, then physical
+                            const visualToSend = visuals.instagram || visuals.physical;
+                            onSend(editableStrategy, visualToSend);
+                        }}
                         disabled={isSending}
                         className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 shadow-lg shadow-emerald-900/20"
                     >
@@ -266,11 +380,27 @@ export function CampaignEditor({ strategy, onBack, onSend, isSending }: Campaign
                                                 ))}
                                             </div>
                                         </div>
+                                        {editableStrategy.dissemination_strategy.estimated_reach && (
+                                            <div className="p-4 bg-muted/30 rounded-lg border border-indigo-100 dark:border-indigo-900/30">
+                                                <h3 className="text-xs font-bold text-muted-foreground uppercase mb-1">Alcance Estimado</h3>
+                                                <div className="flex items-center gap-2">
+                                                    <TrendingUp className="text-indigo-600" size={20} />
+                                                    <span className="text-lg font-bold">{editableStrategy.dissemination_strategy.estimated_reach}</span>
+                                                </div>
+                                            </div>
+                                        )}
                                         <div className="space-y-2">
                                             <h3 className="text-sm font-semibold text-muted-foreground">Alocação de Verba (Sugestão)</h3>
-                                            <Input
-                                                value={editableStrategy.dissemination_strategy.budget_allocation || ''}
-                                                onChange={e => setEditableStrategy(prev => ({ ...prev, dissemination_strategy: { ...prev.dissemination_strategy!, budget_allocation: e.target.value } }))}
+                                            <h3 className="text-sm font-semibold text-muted-foreground">Alocação de Verba (Sugestão)</h3>
+                                            <BudgetOptimizer
+                                                value={editableStrategy.dissemination_strategy.budget_allocation}
+                                                onChange={newBudget => setEditableStrategy(prev => ({
+                                                    ...prev,
+                                                    dissemination_strategy: {
+                                                        ...prev.dissemination_strategy!,
+                                                        budget_allocation: newBudget
+                                                    }
+                                                }))}
                                             />
                                         </div>
                                     </div>
@@ -286,10 +416,15 @@ export function CampaignEditor({ strategy, onBack, onSend, isSending }: Campaign
 
                                     <div className="space-y-2">
                                         <h3 className="text-sm font-semibold text-muted-foreground">Cronograma (Timeline)</h3>
-                                        <Textarea
-                                            value={editableStrategy.dissemination_strategy.timeline || ''}
-                                            onChange={e => setEditableStrategy(prev => ({ ...prev, dissemination_strategy: { ...prev.dissemination_strategy!, timeline: e.target.value } }))}
-                                            className="min-h-[100px]"
+                                        <TimelineVisualizer
+                                            events={editableStrategy.dissemination_strategy.timeline}
+                                            onChange={newEvents => setEditableStrategy(prev => ({
+                                                ...prev,
+                                                dissemination_strategy: {
+                                                    ...prev.dissemination_strategy!,
+                                                    timeline: newEvents
+                                                }
+                                            }))}
                                         />
                                     </div>
                                 </>
@@ -323,9 +458,22 @@ export function CampaignEditor({ strategy, onBack, onSend, isSending }: Campaign
                             <div className="space-y-2 flex-1 flex flex-col">
                                 <div className="flex items-center justify-between">
                                     <label className="text-xs font-semibold text-muted-foreground">Mensagem (Script)</label>
-                                    <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleCopy(editableStrategy.channels.whatsapp?.script || '', 'wa')}>
-                                        {copiedField === 'wa' ? <Check size={12} /> : <Copy size={12} />}
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        {editableStrategy.channels.whatsapp.script_options?.map((opt, idx) => (
+                                            <Button
+                                                key={idx}
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-6 text-[10px] px-2"
+                                                onClick={() => updateChannel('whatsapp', 'script', opt)}
+                                            >
+                                                Opção {idx + 1}
+                                            </Button>
+                                        ))}
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleCopy(editableStrategy.channels.whatsapp?.script || '', 'wa')}>
+                                            {copiedField === 'wa' ? <Check size={12} /> : <Copy size={12} />}
+                                        </Button>
+                                    </div>
                                 </div>
                                 <Textarea
                                     value={editableStrategy.channels.whatsapp?.script || ''}
@@ -356,7 +504,22 @@ export function CampaignEditor({ strategy, onBack, onSend, isSending }: Campaign
                         </CardHeader>
                         <CardContent className="flex-1 pt-6 space-y-4">
                             <div className="space-y-2">
-                                <label className="text-xs font-semibold text-muted-foreground">Legenda (Copy)</label>
+                                <div className="flex items-center justify-between">
+                                    <label className="text-xs font-semibold text-muted-foreground">Legenda (Copy)</label>
+                                    <div className="flex gap-1">
+                                        {editableStrategy.channels.instagram.copy_options?.map((opt, idx) => (
+                                            <Button
+                                                key={idx}
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-6 text-[10px] px-2"
+                                                onClick={() => updateChannel('instagram', 'copy', opt)}
+                                            >
+                                                Opção {idx + 1}
+                                            </Button>
+                                        ))}
+                                    </div>
+                                </div>
                                 <Textarea
                                     value={editableStrategy.channels.instagram.copy}
                                     onChange={(e) => updateChannel('instagram', 'copy', e.target.value)}
@@ -368,27 +531,113 @@ export function CampaignEditor({ strategy, onBack, onSend, isSending }: Campaign
                                 <Textarea
                                     value={editableStrategy.channels.instagram.image_prompt}
                                     onChange={(e) => updateChannel('instagram', 'image_prompt', e.target.value)}
-                                    className="min-h-[100px] text-xs bg-muted/30 font-mono text-muted-foreground"
+                                    className="min-h-[80px] text-xs bg-muted/30 font-mono text-muted-foreground"
                                     placeholder="Prompt em inglês para gerar a imagem..."
                                 />
                             </div>
-                            <Button
-                                onClick={() => handleGenerateImage('instagram')}
-                                disabled={generatingVisual === 'instagram'}
-                                className="w-full bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
-                            >
-                                {generatingVisual === 'instagram' ? "Gerando Arte (Gemini)..." : "Gerar Arte Instagram"}
-                            </Button>
-                            <div className="border rounded-xl p-4 flex flex-col items-center justify-center bg-muted/10 min-h-[300px]">
-                                {visuals.instagram ? (
-                                    <div className="space-y-2 w-full">
-                                        <img src={visuals.instagram} alt="Instagram Art" className="rounded-lg shadow-md w-full object-cover" />
-                                        <p className="text-xs text-center text-muted-foreground">Gerado por Gemini</p>
+
+                            {/* --- Image Generation Options --- */}
+                            <div className="space-y-3 pt-2">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-semibold text-muted-foreground">Opções Visuais (IA)</h3>
+                                    <Button
+                                        size="sm"
+                                        onClick={async () => {
+                                            if (!editableStrategy.channels.instagram.image_options) {
+                                                // Fallback if options missing
+                                                handleGenerateImage('instagram');
+                                                return;
+                                            }
+
+                                            setGeneratingVisual('instagram');
+                                            try {
+                                                const { generateMarketingImage } = await import("@/app/actions/nanobanana");
+
+                                                // Generate for all 3 options
+                                                const promises = editableStrategy.channels.instagram.image_options.map(async (opt, idx) => {
+                                                    // Add delay to avoid rate limits if necessary, or just parallel
+                                                    const res = await generateMarketingImage(opt.prompt, 'instagram');
+                                                    return { idx, url: res.imageUrl };
+                                                });
+
+                                                const results = await Promise.all(promises);
+
+                                                // Update visuals state with multiple images
+                                                // We'll store them as active options in a temporary state or just override visual.instagram for selected
+                                                // Let's create a new state for 'candidates'
+                                                const newCandidates = { ...visualCandidates };
+                                                newCandidates.instagram = results.map(r => r.url || null);
+                                                setVisualCandidates(newCandidates);
+
+                                                // Default select headers
+                                                if (results[0].url) {
+                                                    setVisuals(prev => ({ ...prev, instagram: results[0].url }));
+                                                }
+
+                                            } catch (e) {
+                                                console.error(e);
+                                                alert("Erro ao gerar imagens.");
+                                            } finally {
+                                                setGeneratingVisual(null);
+                                            }
+                                        }}
+                                        disabled={generatingVisual === 'instagram'}
+                                        className="bg-gradient-to-r from-purple-500 to-pink-500 text-white h-7 text-xs"
+                                    >
+                                        <Sparkles size={12} className="mr-1" />
+                                        {generatingVisual === 'instagram' ? "Gerando Variações..." : "Gerar 3 Opções"}
+                                    </Button>
+                                </div>
+
+                                {editableStrategy.channels.instagram.image_options && (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        {editableStrategy.channels.instagram.image_options.map((option, idx) => {
+                                            const candidateUrl = visualCandidates.instagram?.[idx];
+                                            const isSelected = visuals.instagram === candidateUrl && candidateUrl;
+
+                                            // Fallback for prompt display if no image yet
+                                            return (
+                                                <div
+                                                    key={idx}
+                                                    onClick={() => candidateUrl && setVisuals(prev => ({ ...prev, instagram: candidateUrl }))}
+                                                    className={cn(
+                                                        "relative group cursor-pointer rounded-lg border-2 transition-all overflow-hidden aspect-square bg-muted/20 flex flex-col",
+                                                        isSelected ? "border-purple-500 ring-2 ring-purple-200" : "border-transparent hover:border-purple-300"
+                                                    )}
+                                                >
+                                                    {candidateUrl ? (
+                                                        <>
+                                                            <img src={candidateUrl} alt={`Option ${idx + 1}`} className="w-full h-full object-cover" />
+                                                            {isSelected && (
+                                                                <div className="absolute top-2 right-2 bg-purple-500 text-white rounded-full p-1 shadow-md">
+                                                                    <Check size={12} />
+                                                                </div>
+                                                            )}
+                                                            <div className="absolute bottom-0 inset-x-0 bg-black/60 p-2 text-white text-[10px] truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                {option.title}
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <div className="flex-1 p-3 flex flex-col justify-between">
+                                                            <div>
+                                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Conceito {idx + 1}</span>
+                                                                <p className="text-xs font-semibold leading-tight mt-1 text-foreground/80">{option.title}</p>
+                                                            </div>
+                                                            <p className="text-[10px] text-muted-foreground line-clamp-4 italic bg-white/50 p-1 rounded">
+                                                                "{option.prompt}"
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                ) : (
-                                    <div className="text-center text-muted-foreground">
-                                        <p>Nenhuma arte gerada ainda.</p>
-                                        <p className="text-xs">Clique no botão acima para criar.</p>
+                                )}
+
+                                {/* Selected Large Preview (Optional, or just keep what was there but updated) */}
+                                {visuals.instagram && !editableStrategy.channels.instagram.image_options && (
+                                    <div className="border rounded-xl p-4 flex flex-col items-center justify-center bg-muted/10 min-h-[200px]">
+                                        <img src={visuals.instagram} alt="Instagram Art" className="rounded-lg shadow-md w-full object-cover max-h-[400px]" />
                                     </div>
                                 )}
                             </div>
@@ -435,32 +684,108 @@ export function CampaignEditor({ strategy, onBack, onSend, isSending }: Campaign
                                 <Textarea
                                     value={editableStrategy.channels.physical.image_prompt || ''}
                                     onChange={(e) => updateChannel('physical', 'image_prompt', e.target.value)}
-                                    className="min-h-[100px] text-xs bg-muted/30 font-mono text-muted-foreground"
+                                    className="min-h-[80px] text-xs bg-muted/30 font-mono text-muted-foreground"
                                     placeholder="Prompt em inglês para gerar o cartaz..."
                                 />
                             </div>
-                            <Button
-                                onClick={() => handleGenerateImage('physical')}
-                                disabled={generatingVisual === 'physical'}
-                                className="w-full"
-                            >
-                                <Store className="mr-2" size={16} />
-                                {generatingVisual === 'physical' ? "Criando Cartaz..." : "Gerar Cartaz PDV"}
-                            </Button>
-                            <div className="border rounded-xl p-4 flex flex-col items-center justify-center bg-muted/10 min-h-[300px]">
-                                {visuals.physical ? (
-                                    <div className="space-y-2 w-full">
-                                        <img src={visuals.physical} alt="PDV Poster" className="rounded-lg shadow-md w-full object-cover" />
-                                        <p className="text-xs text-center text-muted-foreground">Cartaz Gerado por Gemini</p>
+
+                            <div className="space-y-3 pt-2">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-sm font-semibold text-muted-foreground">Opções de Cartaz (IA)</h3>
+                                    <Button
+                                        size="sm"
+                                        onClick={async () => {
+                                            if (!editableStrategy.channels.physical.image_options) {
+                                                handleGenerateImage('physical');
+                                                return;
+                                            }
+
+                                            setGeneratingVisual('physical');
+                                            try {
+                                                const { generateMarketingImage } = await import("@/app/actions/nanobanana");
+
+                                                const promises = editableStrategy.channels.physical.image_options.map(async (opt, idx) => {
+                                                    const res = await generateMarketingImage(opt.prompt, 'pdv');
+                                                    return { idx, url: res.imageUrl };
+                                                });
+
+                                                const results = await Promise.all(promises);
+
+                                                const newCandidates = { ...visualCandidates };
+                                                newCandidates.physical = results.map(r => r.url || null);
+                                                setVisualCandidates(newCandidates);
+
+                                                if (results[0].url) {
+                                                    setVisuals(prev => ({ ...prev, physical: results[0].url }));
+                                                }
+
+                                            } catch (e) {
+                                                console.error(e);
+                                                alert("Erro ao gerar cartazes.");
+                                            } finally {
+                                                setGeneratingVisual(null);
+                                            }
+                                        }}
+                                        disabled={generatingVisual === 'physical'}
+                                        className="bg-gradient-to-r from-orange-400 to-red-500 text-white h-7 text-xs"
+                                    >
+                                        <Store className="mr-1" size={12} />
+                                        {generatingVisual === 'physical' ? "Criando Cartazes..." : "Gerar 3 Opções"}
+                                    </Button>
+                                </div>
+
+                                {editableStrategy.channels.physical.image_options && (
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                        {editableStrategy.channels.physical.image_options.map((option, idx) => {
+                                            const candidateUrl = visualCandidates.physical?.[idx];
+                                            const isSelected = visuals.physical === candidateUrl && candidateUrl;
+
+                                            return (
+                                                <div
+                                                    key={idx}
+                                                    onClick={() => candidateUrl && setVisuals(prev => ({ ...prev, physical: candidateUrl }))}
+                                                    className={cn(
+                                                        "relative group cursor-pointer rounded-lg border-2 transition-all overflow-hidden aspect-[3/4] bg-muted/20 flex flex-col",
+                                                        isSelected ? "border-orange-500 ring-2 ring-orange-200" : "border-transparent hover:border-orange-300"
+                                                    )}
+                                                >
+                                                    {candidateUrl ? (
+                                                        <>
+                                                            <img src={candidateUrl} alt={`Option ${idx + 1}`} className="w-full h-full object-cover" />
+                                                            {isSelected && (
+                                                                <div className="absolute top-2 right-2 bg-orange-500 text-white rounded-full p-1 shadow-md">
+                                                                    <Check size={12} />
+                                                                </div>
+                                                            )}
+                                                            <div className="absolute bottom-0 inset-x-0 bg-black/60 p-2 text-white text-[10px] truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                {option.title}
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <div className="flex-1 p-3 flex flex-col justify-between">
+                                                            <div>
+                                                                <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Cartaz {idx + 1}</span>
+                                                                <p className="text-xs font-semibold leading-tight mt-1 text-foreground/80">{option.title}</p>
+                                                            </div>
+                                                            <p className="text-[10px] text-muted-foreground line-clamp-4 italic bg-white/50 p-1 rounded">
+                                                                "{option.prompt}"
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            );
+                                        })}
                                     </div>
-                                ) : (
-                                    <div className="text-center text-muted-foreground">
-                                        <p>Nenhuma arte gerada ainda.</p>
-                                        <p className="text-xs">Clique no botão acima para criar.</p>
+                                )}
+
+                                {visuals.physical && !editableStrategy.channels.physical.image_options && (
+                                    <div className="border rounded-xl p-4 flex flex-col items-center justify-center bg-muted/10 min-h-[300px]">
+                                        <img src={visuals.physical} alt="PDV Poster" className="rounded-lg shadow-md w-full object-cover" />
                                     </div>
                                 )}
                             </div>
                         </CardContent>
+
                     </Card>
                 </TabsContent>
             </Tabs>

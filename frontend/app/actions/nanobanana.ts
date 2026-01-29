@@ -56,13 +56,13 @@ export async function generateMarketingImage(prompt: string, type: 'instagram' |
         // If it's standard Gemini, it returns text.
         // Let's log it to debug if possible, but for now try to extract standard image fields.
 
-        const possibleImage = data.candidates?.[0]?.content?.parts?.[0]?.inline_data?.data
-            || data.candidates?.[0]?.content?.parts?.[0]?.text; // Sometimes returns a URL in text?
+        const part = data.candidates?.[0]?.content?.parts?.[0];
+        const possibleImage = part?.inline_data?.data || part?.inlineData?.data || part?.text;
 
         if (possibleImage) {
-            // If it's base64 (inline_data)
-            if (data.candidates?.[0]?.content?.parts?.[0]?.inline_data) {
-                const mime = data.candidates?.[0]?.content?.parts?.[0]?.inline_data.mime_type || 'image/png';
+            // If it's base64 (inline_data or inlineData)
+            if (part?.inline_data || part?.inlineData) {
+                const mime = (part?.inline_data || part?.inlineData).mime_type || (part?.inline_data || part?.inlineData).mimeType || 'image/png';
                 return { success: true, imageUrl: `data:${mime};base64,${possibleImage}` };
             }
             // If text (maybe a URL?)
