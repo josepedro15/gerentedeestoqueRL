@@ -287,7 +287,7 @@ export async function generateCampaignWithGemini(
     try {
         const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
         // Using gemini-2.0-flash as it is fast and supports JSON output well
-        const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
+        const model = genAI.getGenerativeModel({ model: "gemini-3-flash-preview" });
 
         // Calculate Seasonality
         const upcomingEvents = getUpcomingSeasonality();
@@ -393,7 +393,7 @@ export async function generateCampaignWithGemini(
         let text = result.response.text();
 
         // Clean Markdown if present
-        text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+        text = text.replace(/```json\s*/g, '').replace(/```\s*/g, '').replace(/^JSON/i, '').trim();
 
         const data = JSON.parse(text) as CampaignStrategy;
 

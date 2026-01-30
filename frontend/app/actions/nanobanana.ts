@@ -24,8 +24,8 @@ export async function generateMarketingImage(prompt: string, type: 'instagram' |
         }
 
         // Using the endpoint provided by the user from N8N
-        // Model: gemini-3-pro-image-preview
-        const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-pro-image-preview:generateContent?key=${apiKey}`;
+        // Using Gemini 3 Flash Preview
+        const targetUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${apiKey}`;
 
         const response = await fetch(targetUrl, {
             method: 'POST',

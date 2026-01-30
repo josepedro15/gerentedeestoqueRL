@@ -44,7 +44,7 @@ export default function TryOnInterface() {
         setError(null);
 
         try {
-            // NOTE: Using 'gemini-2.0-flash-exp' as default placeholder, 
+            // NOTE: Using 'gemini-3-flash-preview' as default placeholder, 
             // but in production this should be the specific model the user has access to.
             const result = await generateTryOn(clientImage, productImage);
 
